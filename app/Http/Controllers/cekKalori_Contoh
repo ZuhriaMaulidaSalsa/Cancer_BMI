@@ -1,0 +1,231 @@
+<?php
+
+namespace App\Http\Controllers\Apps;
+
+use App\Http\Controllers\Controller;
+use App\Models\Kalori;
+use App\Models\Nutrisi as ModelsNutrisi;
+use Illuminate\Http\Request;
+use Nutrisi;
+
+class KaloriHarianController extends Controller
+{
+    /**
+     * Display a listing of the resource.
+     */
+    public function index(Request $request)
+    {
+        if ($request->data) {
+            $data = Kalori::where('user_id', auth()->user()->id)->where('id', $request->data)->first();
+            return view('app.kalori-harian.index', compact('data'));
+        }
+
+        return view('app.kalori-harian.index');
+    }
+
+    /**
+     * Show the form for creating a new resource.
+     */
+    public function create(Request $request)
+    {
+        if ($request->id) {
+            $data = ModelsNutrisi::where('id', $request->id)->first();
+            return response()->json($data);
+        }
+
+        if ($request->kategori == true) {
+            $data = ModelsNutrisi::groupBy('kategori')->get('kategori');
+            // dd($data);
+            $data = $data->reject(function ($value, $key) {
+                return $value->kategori == null;
+            });
+            return response()->json($data);
+        }
+        if ($request->nama_kategori) {
+            $data = ModelsNutrisi::where('kategori', $request->nama_kategori)->get();
+            return response()->json($data);
+        }
+        // if ($request->nama) {
+        //     $data = ModelsNutrisi::where('nama', $request->nama)->first();
+        //     return response()->json($data);
+        // }
+        $data = ModelsNutrisi::all();
+        return response()->json($data);
+    }
+
+    /**
+     * Store a newly created resource in storage.
+     */
+    public function store(Request $request)
+    {
+
+
+
+        $request->validate([
+            'kategori.*' => 'required',
+            'pilihan_menu_makan_pagi.*' => 'required',
+            'pilihan_menu_makan_siang.*' => 'required',
+            'pilihan_menu_makan_malam.*' => 'required',
+            'kuantitas_makan_pagi.*' => 'required',
+            'kuantitas_makan_siang.*' => 'required',
+            'kuantitas_makan_malam.*' => 'required',
+            'satuan_makan_pagi.*' => 'required|in:gram,urt',
+            'satuan_makan_siang.*' => 'required|in:gram,urt',
+            'satuan_makan_malam.*' => 'required|in:gram,urt',
+        ]);
+
+        $request->merge([
+            'pilihan_menu' => array_merge($request->pilihan_menu_makan_pagi, $request->pilihan_menu_makan_siang, $request->pilihan_menu_makan_malam),
+            'kuantitas' => array_merge($request->kuantitas_makan_pagi, $request->kuantitas_makan_siang, $request->kuantitas_makan_malam),
+            'satuan' => array_merge($request->satuan_makan_pagi, $request->satuan_makan_siang, $request->satuan_makan_malam),
+        ]);
+
+        // cek apakah pilihan_menu, kuantitas, dan satuan memiliki jumlah yang sama
+        if (count($request->pilihan_menu) != count($request->kuantitas) || count($request->pilihan_menu) != count($request->satuan)) {
+            return redirect()->back()->with('error', "Jumlah menu, kuantitas, dan satuan tidak sama");
+        }
+
+        $makanan= [];
+        $kalori = [];
+        $kuantitas = [];
+        $satuan = [];
+        $kategori = [];
+
+        $i=0;
+        foreach($request->pilihan_menu_makan_pagi as $value){
+            $data= ModelsNutrisi::where('id', $value)->first();
+            $makanan['pagi'][$i] = $data->nama;
+            $kuantitas['pagi'][$i] = $request->kuantitas_makan_pagi[$i];
+            $kategori['pagi'][$i] = $data->kategori;
+
+
+            if($data->urt == null){
+                $data->urt = 1;
+            }
+
+            if($request->satuan_makan_pagi[$i] == 'gram'){
+                $kalori['pagi'][$i] = ($data->kalori_gram / $data->berat) * $request->kuantitas_makan_pagi[$i];
+                $satuan['pagi'][$i] = $data->satuan_berat;
+            }else{
+                $kalori['pagi'][$i] = ($data->kalori_urt / $data->urt) * $request->kuantitas_makan_pagi[$i];
+                $satuan['pagi'][$i] = $data->satuan_urt;
+            }
+
+            $i++;
+        }
+        $i=0;
+        foreach($request->pilihan_menu_makan_siang as $value){
+            $data= ModelsNutrisi::where('id', $value)->first();
+            $makanan['siang'][$i] = $data->nama;
+            $kuantitas['siang'][$i] = $request->kuantitas_makan_siang[$i];
+            $kategori['siang'][$i] = $data->kategori;
+
+            if($data->urt == null){
+                $data->urt = 1;
+            }
+
+            if($request->satuan_makan_siang[$i] == 'gram'){
+                $kalori['siang'][$i] = ($data->kalori_gram / $data->berat) * $request->kuantitas_makan_siang[$i];
+                $satuan['siang'][$i] = $data->satuan_berat;
+            }else{
+                $kalori['siang'][$i] = ($data->kalori_urt / $data->urt) * $request->kuantitas_makan_siang[$i];
+                $satuan['siang'][$i] = $data->satuan_urt;
+            }
+            // dd($kalori['siang'][$i]);
+
+            $i++;
+        }
+
+        $i=0;
+        foreach($request->pilihan_menu_makan_malam as $value){
+            $data= ModelsNutrisi::where('id', $value)->first();
+            $makanan['malam'][$i] = $data->nama;
+            $kuantitas['malam'][$i] = $request->kuantitas_makan_malam[$i];
+            $kategori['malam'][$i] = $data->kategori;
+
+            if($data->urt == null){
+                $data->urt = 1;
+            }
+
+            if($request->satuan_makan_malam[$i] == 'gram'){
+                $kalori['malam'][$i] = ($data->kalori_gram / $data->berat) * $request->kuantitas_makan_malam[$i];
+                $satuan['malam'][$i] = $data->satuan_berat;
+            }else{
+                $kalori['malam'][$i] = ($data->kalori_urt / $data->urt) * $request->kuantitas_makan_malam[$i];
+                $satuan['malam'][$i] = $data->satuan_urt;
+            }
+
+
+            $i++;
+        }
+
+        // dd(['makanan' => $makanan, 'kalori' => $kalori, 'kuantitas' => $kuantitas, 'satuan' => $satuan, 'kategori' => $kategori]);
+
+        $sumKalori = intval(array_sum($kalori['pagi']) + array_sum($kalori['siang']) + array_sum($kalori['malam']));
+
+
+
+        // ubah $makanan menjadi string
+
+
+        $dbKalori = Kalori::create([
+            'user_id' => auth()->user()->id,
+            'kalori_pagi' => array_sum($kalori['pagi']),
+            'kalori_siang' => array_sum($kalori['siang']),
+            'kalori_malam' => array_sum($kalori['malam']),
+
+            'makanan_pagi' => implode(", ", $makanan['pagi']),
+            'makanan_siang' => implode(", ", $makanan['siang']),
+            'makanan_malam' => implode(", ", $makanan['malam']),
+
+            'kategori_pagi' => implode(", ", $kategori['pagi']),
+            'kategori_siang' => implode(", ", $kategori['siang']),
+            'kategori_malam' => implode(", ", $kategori['malam']),
+
+            'kuantitas_pagi' => implode(", ", $kuantitas['pagi']),
+            'kuantitas_siang' => implode(", ", $kuantitas['siang']),
+            'kuantitas_malam' => implode(", ", $kuantitas['malam']),
+
+            'satuan_pagi' => implode(", ", $satuan['pagi']),
+            'satuan_siang' => implode(", ", $satuan['siang']),
+            'satuan_malam' => implode(", ", $satuan['malam']),
+
+
+        ]);
+
+        return redirect()->route('kalori-harian.index', ['data' => $dbKalori])->with('success', "Kalori yang anda konsumsi hari ini adalah " . $sumKalori . " kalori");
+    }
+
+    /**
+     * Display the specified resource.
+     */
+    public function show(string $id)
+    {
+        $data=Kalori::where('id', $id)->first();
+        return response()->json($data);
+    }
+
+    /**
+     * Show the form for editing the specified resource.
+     */
+    public function edit(string $id)
+    {
+        //
+    }
+
+    /**
+     * Update the specified resource in storage.
+     */
+    public function update(Request $request, string $id)
+    {
+        //
+    }
+
+    /**
+     * Remove the specified resource from storage.
+     */
+    public function destroy(string $id)
+    {
+        //
+    }
+}
